@@ -1,11 +1,14 @@
 import numpy as np
 import cv2
+from datasets.ray_utils import get_ray_directions
 
 
 class Tracker():
     def __init__(self, dataset):
         self.dataset = dataset
         self.set_intrinsics()
+        self.scale = 1.05   # consistent with para when training
+        self.directions = get_ray_directions(self.img_wh[1], self.img_wh[0], self.K).cuda()
         # self.show_paras()
 
     def set_intrinsics(self):
@@ -28,6 +31,17 @@ class Tracker():
 
     def get_pose_obj2cam(self):
         return self.pose_obj2cam
+
+    def set_image(self, img):
+        self.img = img
+
+    def set_ngp_model(self, model):
+        self.ngp_model = model
+
+    def scale_pose(self, pose):
+        scaled_pose = pose
+        scaled_pose[:, 3] /= 2 * self.scale
+        return scaled_pose
 
     def show_paras(self):
         print("dataset: ", self.dataset)

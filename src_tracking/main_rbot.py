@@ -5,10 +5,17 @@ import glob
 import os
 
 from tqdm import tqdm
-from tracker import Tracker
+from tracker_direct import TrackerDirect
 import tracker_utils
 
-def track_one_video(root_path, variant, object):
+from models.networks import NGP
+from utils import load_ckpt
+
+def track_one_video(root_path, NGP_model_path, variant, object):
+
+    # load the pretrained NGP model
+    ngp_model = NGP(scale=0.5).cuda()
+    load_ckpt(ngp_model, NGP_model_path + object + '_trainvaltest_50_slim.ckpt')
 
     # load imgs
     img_paths = sorted(glob.glob(os.path.join(root_path, object, 'frames', variant + '*.png')))
@@ -18,7 +25,8 @@ def track_one_video(root_path, variant, object):
     poses_gt = np.array(tracker_utils.load_pose_rbot(poses_path))
 
     # set tracker
-    tracker = Tracker('rbot')
+    tracker = TrackerDirect('rbot')
+    tracker.set_ngp_model(ngp_model)
     tracker.set_pose_obj2cam(poses_gt[0])
 
     # compute result
@@ -27,16 +35,18 @@ def track_one_video(root_path, variant, object):
     for i in tqdm(range(len(img_paths))):
         # load img
         img = cv2.imread(img_paths[i], 1)
+        tracker.set_image(img)
 
         # set gt pose, for testing
         tracker.set_pose_obj2cam(poses_gt[i])
 
         # estimate the pose
+        tracker.esitmation_pose()
         pose_pred = tracker.get_pose_obj2cam()
 
         # compute error
         error_R, error_t = tracker_utils.compute_error_pose(pose_pred, poses_gt[i])
-        success = tracker_utils.compute_success_ncm_ndegree(error_R, error_t, 5.0, 50.0)
+        success = tracker_utils.compute_success_ncm_ndegree(error_R, error_t, 5.0, 0.05)
         correct_num += success
 
         cv2.imshow("img", img)
@@ -52,6 +62,7 @@ def evaluate_rbot():
     print("evaluate rbot dataset.")
 
     root_path = "/data/DATASETS/RBOT_dataset_2/"
+    NGP_model_path = "/data/codes/ngp_pl/pretrained_models/rbot/"
 
     variants = ['a_regular', 'b_dynamiclight', 'c_noisy', 'd_occlusion']
     objects = ['ape', 'bakingsoda', 'benchviseblue', 'broccolisoup', 'cam',
@@ -62,7 +73,7 @@ def evaluate_rbot():
     results = []
     for v in range(0, 1):
         for o in range(6, 7):
-            result = track_one_video(root_path, variants[v], objects[o])
+            result = track_one_video(root_path, NGP_model_path, variants[v], objects[o])
             results.append(result)
 
     # show results

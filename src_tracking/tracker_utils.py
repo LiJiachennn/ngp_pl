@@ -18,7 +18,7 @@ def compute_error_pose(P_pred, P_gt):
     error_translation = compte_error_translation(t_pred, t_gt)
     return error_rotation, error_translation
 
-def compute_success_ncm_ndegree(error_rotation, error_translation, thred_rotation = 5.0, thred_translation = 50):
+def compute_success_ncm_ndegree(error_rotation, error_translation, thred_rotation = 5.0, thred_translation = 0.05):
     if error_rotation < thred_rotation and error_translation < thred_translation:
         return 1
     return 0
@@ -29,7 +29,7 @@ def load_pose_rbot(path):
     for i in range(poses.shape[0]):
         pose_ = np.zeros((4, 4))
         pose_[0:3, 0:3] = poses[i][0:9].reshape(3, 3)
-        pose_[0:3, 3] = poses[i][9:12]
+        pose_[0:3, 3] = poses[i][9:12] * 0.001
         pose_[3, :] = [0, 0, 0, 1]
         poses_.append(pose_)
     return poses_
