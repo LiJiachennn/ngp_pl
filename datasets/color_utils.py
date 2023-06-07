@@ -29,3 +29,20 @@ def read_image(img_path, img_wh, blend_a=True):
     img = rearrange(img, 'h w c -> (h w) c')
 
     return img
+
+def read_image_with_mask(img_path, mask_path, img_wh, blend_a=True):
+    img = imageio.imread(img_path).astype(np.float32)/255.0
+    mask = imageio.imread(mask_path).astype(np.float32)/255.0
+    img = img * mask
+    img[img <= 0.0001] = 1.0
+
+    if img.shape[2] == 4: # blend A to RGB
+        if blend_a:
+            img = img[..., :3]*img[..., -1:]+(1-img[..., -1:])
+        else:
+            img = img[..., :3]*img[..., -1:]
+
+    img = cv2.resize(img, img_wh)
+    img = rearrange(img, 'h w c -> (h w) c')
+
+    return img

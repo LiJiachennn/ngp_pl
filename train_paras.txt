@@ -1,0 +1,2 @@
+--dataset_name nsvf --root_dir /data/DATASETS/Synthetic_NSVF/Bike --exp_name Bike --scale 0.5 --batch_size 8192 --num_epochs 30
+--dataset_name rbot --root_dir /data/DATASETS/RBOT_dataset_2 --exp_name ape --scale 0.5 --batch_size 8192 --num_epochs 2
