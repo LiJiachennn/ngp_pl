@@ -1,5 +1,9 @@
 import numpy as np
 import cv2
+import torch
+
+from models.rendering import render
+from datasets.ray_utils import get_rays
 from datasets.ray_utils import get_ray_directions
 
 
@@ -57,9 +61,48 @@ class Tracker():
         self.ngp_model = model
 
     def scale_pose(self, pose):
-        scaled_pose = pose
+        scaled_pose = pose.copy()
         scaled_pose[:, 3] /= 2 * self.scale
         return scaled_pose
+
+    def scale_depth(self, depth):
+        depth *= 2 * self.scale
+        return depth
+
+    def visulize_tracking_result(self):
+        tracking_result = self.imgPyramid[0].copy()
+
+        # cur pose
+        pose_obj2cam = self.get_pose_obj2cam()
+        pose_cam2obj = np.linalg.inv(pose_obj2cam)
+        pose_cam2obj_scaled = self.scale_pose(pose_cam2obj)
+
+        # use ngp model to render the image
+        rays_o, rays_d = get_rays(self.directions[0], torch.from_numpy(pose_cam2obj_scaled).cuda())
+        results_render = render(self.ngp_model, rays_o, rays_d,
+                                **{'test_time': True,
+                                   'T_threshold': 1e-2,
+                                   'exp_step_factor': 1 / 256})
+
+        rgb_render = results_render['rgb'].reshape(self.img_wh[0][1], self.img_wh[0][0], 3).cpu().numpy()
+        rgb_render = (rgb_render * 255).astype(np.uint8)
+        rgb_render = cv2.cvtColor(rgb_render, cv2.COLOR_RGB2BGR)
+        opacity_render = results_render['opacity'].reshape(self.img_wh[0][1], self.img_wh[0][0]).cpu().numpy()
+
+        # find the valid point
+        valid_indices = np.where(opacity_render > 0.95)
+        valid_indices = np.array(valid_indices).transpose()
+
+        # visulize the result
+        for i in range(valid_indices.shape[0]):
+            r = valid_indices[i][0]
+            c = valid_indices[i][1]
+            # render texture
+            # tracking_result[r][c] = 0.5 * rgb_render[r][c] + 0.5 * self.imgPyramid[0][r][c]
+            # render single color
+            tracking_result[r][c] = 0.5 * np.array([255, 0, 255]) + 0.5 * self.imgPyramid[0][r][c]
+
+        return tracking_result
 
     def show_paras(self):
         print("dataset: ", self.dataset)

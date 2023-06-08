@@ -22,7 +22,7 @@ def track_one_video(root_path, NGP_model_path, variant, object):
 
     # load poses
     poses_path = root_path + "poses_first_mat.txt"
-    poses_gt = np.array(tracker_utils.load_pose_rbot(poses_path))
+    poses_gt = tracker_utils.load_pose_rbot(poses_path)
 
     # set tracker
     tracker = TrackerDirect('rbot')
@@ -38,19 +38,26 @@ def track_one_video(root_path, NGP_model_path, variant, object):
         tracker.set_image(img)
 
         # set gt pose, for testing
-        tracker.set_pose_obj2cam(poses_gt[i])
+        # tracker.set_pose_obj2cam(poses_gt[i])
 
         # estimate the pose
         tracker.esitmation_pose()
         pose_pred = tracker.get_pose_obj2cam()
 
+        # visulize the tracking result
+        result_tracking = tracker.visulize_tracking_result()
+
         # compute error
         error_R, error_t = tracker_utils.compute_error_pose(pose_pred, poses_gt[i])
         success = tracker_utils.compute_success_ncm_ndegree(error_R, error_t, 5.0, 0.05)
-        correct_num += success
+        if success:
+            correct_num += 1
+        else:
+            tracker.set_pose_obj2cam(poses_gt[i])
 
+        cv2.imshow("result", result_tracking);
         cv2.imshow("img", img)
-        key = cv2.waitKey(0)
+        key = cv2.waitKey(1)
         if key == 27:
             break
 

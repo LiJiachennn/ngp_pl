@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import cv2
 
 def compute_error_rotation(R_pred, R_gt):
     trace = np.trace(np.dot(R_pred.T, R_gt))
@@ -32,5 +33,17 @@ def load_pose_rbot(path):
         pose_[0:3, 3] = poses[i][9:12] * 0.001
         pose_[3, :] = [0, 0, 0, 1]
         poses_.append(pose_)
-    return poses_
+    return np.array(poses_).astype(np.float32)
 
+def depth_normalize(depth_, depth_min):
+    depth = depth_.copy()
+    depth[depth < depth_min] = depth_min
+    depth = (depth - depth_min) / (depth.max() - depth_min)
+    depth = (depth*255).astype(np.uint8)
+    return depth
+
+def depth2pseudo(depth_, depth_min):
+    depth = depth_.copy()
+    depth = depth_normalize(depth, depth_min)
+    depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
+    return depth
