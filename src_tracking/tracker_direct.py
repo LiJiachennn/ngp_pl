@@ -17,8 +17,8 @@ class TrackerDirect(Tracker):
 
     def esitmation_pose(self):
         # estimation pose under multi level
-        # for i in range(4):
-        #     self.run_iteration(2)
+        for i in range(4):
+            self.run_iteration(2)
         for i in range(2):
             self.run_iteration(1)
         for i in range(1):
@@ -29,6 +29,7 @@ class TrackerDirect(Tracker):
         # get paras under current level
         img = self.imgPyramid[level]
         K = self.K[level]
+        Kinv = np.linalg.inv(K)
         img_wh = self.img_wh[level]
         directions = self.directions[level]
 
@@ -52,25 +53,54 @@ class TrackerDirect(Tracker):
         opacity_render = results_render['opacity'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
 
         # optimize the pose
-        Jacobian = np.zeros((6, 1))
-        Hession = np.zeros((6, 6))
+        hJT = np.zeros((6, 1))
+        H = np.zeros((6, 6))
+
+        # prepare the gray img
+        gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray_render = cv2.cvtColor(rgb_render, cv2.COLOR_BGR2GRAY)
 
         # find the valid point
         valid_indices = np.where(opacity_render > 0.95)
         valid_indices = np.array(valid_indices).transpose()
 
-        for i in range(valid_indices.shape[0]):
-            r = valid_indices[i][0]
-            c = valid_indices[i][1]
+        for i in range(0, valid_indices.shape[0], 10):
+            # get the 2D point in the image
+            uv = np.array([valid_indices[i][1], valid_indices[i][0]])
+            if (uv[0]<1 or uv[0]>(img_wh[0]-2) or uv[1]<1 or uv[1]>(img_wh[1]-2)):
+                continue
 
-            # compute Jacobian for one point
-            h = self.compute_color_diff()
-            J = self.compute_Jacobian()
+            # compute the depth
+            Z = depth_render[uv[1]][uv[0]]
 
+            # compute the 3D point
+            XYZ = self.compute_3Dpoint(uv, Z, Kinv)
 
+            # compute h for one point
+            h = self.compute_color_diff(uv, gray_img, gray_render)
+            # h may suffer from the border (eg. 128-0)
+            # if abs(h) > 127:
+            #     continue
 
+            # compute J, JT and H for one point
+            J_ = self.compute_Jacobian(K, uv, XYZ, gray_img)
+            JT_ = J_.transpose()
+            H_ = np.dot(JT_, J_)
 
+            # sum
+            hJT = hJT + h * JT_
+            H = H + H_
 
+        # compute delta xi
+        # inverse or pseudo-inverse (inv or pinv)
+        # print(hJT)
+        # print(H)
+
+        delta_xi = -np.dot(np.linalg.inv(H), hJT)
+        delta_pose = self.exp(delta_xi).astype(np.float32)
+
+        # update the pose
+        self.set_pose_obj2cam(np.dot(delta_pose, pose_obj2cam))
 
         # check the results
         # cv2.imshow("img_level", img)
@@ -81,10 +111,19 @@ class TrackerDirect(Tracker):
         # cv2.imshow("opacity_render", opacity_render_normalize)
         # cv2.waitKey(0)
 
-        return
 
-    def compute_color_diff(self):
-        return
+    def compute_color_diff(self, uv, img, render):
+        r = uv[1]
+        c = uv[0]
+        return float(img[r][c]) - float(render[r][c])
 
-    def compute_Jacobian(self):
-        return
+    def compute_Jacobian(self, K, uv, XYZ, gray_img):
+        J = np.zeros((1, 6))
+
+        de_dxy = self.de_dxy(gray_img, uv[0], uv[1])
+        dxy_dXYZ = self.dxy_dXYZ(K, XYZ)
+        dXYZ_dxi = self.dXYZ_dxi(XYZ)
+
+        J = np.dot(np.dot(de_dxy, dxy_dXYZ), dXYZ_dxi)
+        J = J.reshape(1, 6)
+        return J

@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 import torch
+import scipy
 
 from models.rendering import render
 from datasets.ray_utils import get_rays
@@ -103,6 +104,54 @@ class Tracker():
             tracking_result[r][c] = 0.5 * np.array([255, 0, 255]) + 0.5 * self.imgPyramid[0][r][c]
 
         return tracking_result
+
+    def compute_3Dpoint(self, uv, depth, Kinv):
+        X = depth * (Kinv[0][0] * uv[0] + Kinv[0][2])
+        Y = depth * (Kinv[1][1] * uv[1] + Kinv[1][2])
+        return np.array([X, Y, depth])
+
+    def de_dxy(self, img, u_, v_):
+        l = u_ - 1
+        r = u_ + 1
+        u = v_ - 1
+        d = v_ + 1
+        dx = (img[v_][r] - img[v_][l]) / 2.0
+        dy = (img[d][u_] - img[u][u_]) / 2.0
+        return np.array([dx, dy])
+
+    def dxy_dXYZ(self, K, XYZ):
+        fx = K[0][0]
+        fy = K[1][1]
+        cx = K[0][2]
+        cy = K[1][2]
+        X, Y, Z = XYZ[0], XYZ[1], XYZ[2]
+        dxy_dXYZ = np.array([[fx / Z, 0,      -(fx * X) / (Z * Z)],
+                             [0,      fy / Z, -(fy * Y) / (Z * Z)]])
+        return dxy_dXYZ
+
+    def dXYZ_dxi(self, XYZ):
+        X, Y, Z = XYZ[0], XYZ[1], XYZ[2]
+        dXYZ_dxi = np.array([[0, Z, -Y, 1, 0, 0],
+                             [-Z, 0, X, 0, 1, 0],
+                             [Y, -X, 0, 0, 0, 1]])
+        return dXYZ_dxi
+
+    def skew_symmetric(self, vector):
+        matrix = np.zeros((3, 3))
+        matrix[0, 1] = -vector[2]
+        matrix[0, 2] = vector[1]
+        matrix[1, 0] = vector[2]
+        matrix[1, 2] = -vector[0]
+        matrix[2, 0] = -vector[1]
+        matrix[2, 1] = vector[0]
+        return matrix
+
+    def exp(self, xi):
+        se3 = np.zeros((4, 4))
+        se3[:3, :3] = self.skew_symmetric(xi[:3])
+        se3[:3, 3] = xi[3:].reshape(3)
+        pose = scipy.linalg.expm(se3)
+        return pose
 
     def show_paras(self):
         print("dataset: ", self.dataset)

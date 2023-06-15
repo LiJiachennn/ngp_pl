@@ -11,6 +11,9 @@ import tracker_utils
 from models.networks import NGP
 from utils import load_ckpt
 
+import warnings; warnings.filterwarnings("ignore")
+
+
 def track_one_video(root_path, NGP_model_path, variant, object):
 
     # load the pretrained NGP model
@@ -55,9 +58,9 @@ def track_one_video(root_path, NGP_model_path, variant, object):
         else:
             tracker.set_pose_obj2cam(poses_gt[i])
 
-        cv2.imshow("result", result_tracking);
+        cv2.imshow("result", result_tracking)
         cv2.imshow("img", img)
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(0)
         if key == 27:
             break
 
