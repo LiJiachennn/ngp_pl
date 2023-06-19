@@ -17,17 +17,15 @@ class TrackerDirect(Tracker):
 
     def esitmation_pose(self):
         # estimation pose under multi level
-        for i in range(4):
-            self.run_iteration(2)
-        for i in range(2):
-            self.run_iteration(1)
-        for i in range(1):
+        for i in range(10):
             self.run_iteration(0)
+        return
 
     def run_iteration(self, level):
 
         # get paras under current level
         img = self.imgPyramid[level]
+        depth = self.depthPyramid[level]
         K = self.K[level]
         Kinv = np.linalg.inv(K)
         img_wh = self.img_wh[level]
@@ -64,7 +62,7 @@ class TrackerDirect(Tracker):
         valid_indices = np.where(opacity_render > 0.95)
         valid_indices = np.array(valid_indices).transpose()
 
-        for i in range(0, valid_indices.shape[0], 10):
+        for i in range(0, valid_indices.shape[0], 1):
             # get the 2D point in the image
             uv = np.array([valid_indices[i][1], valid_indices[i][0]])
             if (uv[0]<1 or uv[0]>(img_wh[0]-2) or uv[1]<1 or uv[1]>(img_wh[1]-2)):
@@ -93,9 +91,6 @@ class TrackerDirect(Tracker):
 
         # compute delta xi
         # inverse or pseudo-inverse (inv or pinv)
-        # print(hJT)
-        # print(H)
-
         delta_xi = -np.dot(np.linalg.inv(H), hJT)
         delta_pose = self.exp(delta_xi).astype(np.float32)
 

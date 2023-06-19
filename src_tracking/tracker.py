@@ -58,6 +58,13 @@ class Tracker():
             img_ = cv2.resize(img, self.img_wh[i], cv2.INTER_LINEAR)
             self.imgPyramid.append(img_)
 
+    def set_depth(self, depth):
+        self.depthPyramid = []
+        self.depthPyramid.append(depth)
+        for i in range(1, 3):
+            depth_ = cv2.resize(depth, self.img_wh[i], cv2.INTER_NEAREST)
+            self.depthPyramid.append(depth_)
+
     def set_ngp_model(self, model):
         self.ngp_model = model
 

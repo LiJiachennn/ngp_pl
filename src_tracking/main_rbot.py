@@ -23,6 +23,9 @@ def track_one_video(root_path, NGP_model_path, variant, object):
     # load imgs
     img_paths = sorted(glob.glob(os.path.join(root_path, object, 'frames', variant + '*.png')))
 
+    # load depth imgs
+    depth_paths = sorted(glob.glob(os.path.join(root_path, object, 'depth', '*.png')))
+
     # load poses
     poses_path = root_path + "poses_first_mat.txt"
     poses_gt = tracker_utils.load_pose_rbot(poses_path)
@@ -37,8 +40,12 @@ def track_one_video(root_path, NGP_model_path, variant, object):
 
     for i in tqdm(range(len(img_paths))):
         # load img
-        img = cv2.imread(img_paths[i], 1)
+        img = cv2.imread(img_paths[i], cv2.IMREAD_UNCHANGED)
         tracker.set_image(img)
+
+        # load depth
+        depth = cv2.imread(depth_paths[i], cv2.IMREAD_UNCHANGED)
+        tracker.set_depth(depth)
 
         # set gt pose, for testing
         # tracker.set_pose_obj2cam(poses_gt[i])
@@ -60,7 +67,7 @@ def track_one_video(root_path, NGP_model_path, variant, object):
 
         cv2.imshow("result", result_tracking)
         cv2.imshow("img", img)
-        key = cv2.waitKey(0)
+        key = cv2.waitKey(1)
         if key == 27:
             break
 
