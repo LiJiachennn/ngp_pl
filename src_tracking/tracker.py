@@ -11,7 +11,12 @@ from datasets.ray_utils import get_ray_directions
 class Tracker():
     def __init__(self, dataset):
         self.dataset = dataset
+        self.use_multi_level = False
+
         self.set_intrinsics()
+        self.set_rays()
+        if self.use_multi_level:
+            self.set_multi_level_paras()
         # self.show_paras()
 
     def set_intrinsics(self):
@@ -33,10 +38,12 @@ class Tracker():
         else:
             raise ValueError(f'{dataset} is not support now!')
 
+    def set_rays(self):
         # compute rays
         self.scale = 1.05  # consistent with para when training
         self.directions.append(get_ray_directions(self.img_wh[0][1], self.img_wh[0][0], self.K[0]).cuda())
 
+    def set_multi_level_paras(self):
         # multi level, append level 1 and level 2
         for i in range(1, 3):
             self.K.append(self.K[0] / pow(2, i))
@@ -54,16 +61,18 @@ class Tracker():
     def set_image(self, img):
         self.imgPyramid = []
         self.imgPyramid.append(img)
-        for i in range(1, 3):
-            img_ = cv2.resize(img, self.img_wh[i], cv2.INTER_LINEAR)
-            self.imgPyramid.append(img_)
+        if self.use_multi_level:
+            for i in range(1, 3):
+                img_ = cv2.resize(img, self.img_wh[i], cv2.INTER_LINEAR)
+                self.imgPyramid.append(img_)
 
     def set_depth(self, depth):
         self.depthPyramid = []
         self.depthPyramid.append(depth)
-        for i in range(1, 3):
-            depth_ = cv2.resize(depth, self.img_wh[i], cv2.INTER_NEAREST)
-            self.depthPyramid.append(depth_)
+        if self.use_multi_level:
+            for i in range(1, 3):
+                depth_ = cv2.resize(depth, self.img_wh[i], cv2.INTER_NEAREST)
+                self.depthPyramid.append(depth_)
 
     def set_ngp_model(self, model):
         self.ngp_model = model
@@ -159,6 +168,15 @@ class Tracker():
         se3[:3, 3] = xi[3:].reshape(3)
         pose = scipy.linalg.expm(se3)
         return pose
+
+    def ln(self, pose):
+        se3 = np.real(scipy.linalg.logm(pose))
+        xi = np.zeros(6)
+        xi[0] = se3[2][1]
+        xi[1] = se3[0][2]
+        xi[2] = se3[1][0]
+        xi[3:] = se3[:3, 3]
+        return xi
 
     def show_paras(self):
         print("dataset: ", self.dataset)

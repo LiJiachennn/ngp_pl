@@ -8,8 +8,6 @@ import tracker_utils
 from models.rendering import render
 from datasets.ray_utils import get_rays
 
-from einops import rearrange
-
 
 class TrackerDirect(Tracker):
     def __init__(self, dataset):
@@ -17,7 +15,7 @@ class TrackerDirect(Tracker):
 
     def esitmation_pose(self):
         # estimation pose under multi level
-        for i in range(10):
+        for i in range(1):
             self.run_iteration(0)
         return
 

@@ -67,7 +67,7 @@ def track_one_video(root_path, NGP_model_path, variant, object):
 
         cv2.imshow("result", result_tracking)
         cv2.imshow("img", img)
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(0)
         if key == 27:
             break
 
