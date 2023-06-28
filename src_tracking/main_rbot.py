@@ -6,6 +6,7 @@ import os
 
 from tqdm import tqdm
 from tracker_direct import TrackerDirect
+from tracker_MLP import TrackerMLP
 import tracker_utils
 
 from models.networks import NGP
@@ -31,7 +32,7 @@ def track_one_video(root_path, NGP_model_path, variant, object):
     poses_gt = tracker_utils.load_pose_rbot(poses_path)
 
     # set tracker
-    tracker = TrackerDirect('rbot')
+    tracker = TrackerMLP('rbot')
     tracker.set_ngp_model(ngp_model)
     tracker.set_pose_obj2cam(poses_gt[0])
 
@@ -51,7 +52,7 @@ def track_one_video(root_path, NGP_model_path, variant, object):
         # tracker.set_pose_obj2cam(poses_gt[i])
 
         # estimate the pose
-        tracker.esitmation_pose()
+        tracker.esitmate_pose()
         pose_pred = tracker.get_pose_obj2cam()
 
         # visulize the tracking result

@@ -13,7 +13,7 @@ class TrackerDirect(Tracker):
     def __init__(self, dataset):
         super().__init__(dataset)
 
-    def esitmation_pose(self):
+    def esitmate_pose(self):
         # estimation pose under multi level
         for i in range(1):
             self.run_iteration(0)
