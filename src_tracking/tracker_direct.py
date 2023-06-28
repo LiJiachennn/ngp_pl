@@ -35,7 +35,7 @@ class TrackerDirect(Tracker):
         pose_cam2obj_scaled = self.scale_pose(pose_cam2obj)
 
         # use ngp model to render the image
-        rays_o, rays_d = get_rays(directions, torch.from_numpy(pose_cam2obj_scaled).cuda())
+        rays_o, rays_d = get_rays(directions, torch.from_numpy(pose_cam2obj_scaled).to(self.device))
         results_render = render(self.ngp_model, rays_o, rays_d,
                                 **{'test_time': True,
                                    'T_threshold': 1e-2,

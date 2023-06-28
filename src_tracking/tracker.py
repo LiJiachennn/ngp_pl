@@ -10,6 +10,7 @@ from datasets.ray_utils import get_ray_directions
 
 class Tracker():
     def __init__(self, dataset):
+        self.device = "cuda:0"
         self.dataset = dataset
         self.use_multi_level = False
 
@@ -41,7 +42,7 @@ class Tracker():
     def set_rays(self):
         # compute rays
         self.scale = 1.05  # consistent with para when training
-        self.directions.append(get_ray_directions(self.img_wh[0][1], self.img_wh[0][0], self.K[0]).cuda())
+        self.directions.append(get_ray_directions(self.img_wh[0][1], self.img_wh[0][0], self.K[0]).to(self.device))
 
     def set_multi_level_paras(self):
         # multi level, append level 1 and level 2
@@ -50,7 +51,7 @@ class Tracker():
             w_ = int(self.img_wh[0][0] / pow(2, i))
             h_ = int(self.img_wh[0][1] / pow(2, i))
             self.img_wh.append((w_, h_))
-            self.directions.append(get_ray_directions(self.img_wh[i][1], self.img_wh[i][0], self.K[i]).cuda())
+            self.directions.append(get_ray_directions(self.img_wh[i][1], self.img_wh[i][0], self.K[i]).to(self.device))
 
     def set_pose_obj2cam(self, pose):
         self.pose_obj2cam = pose
@@ -95,7 +96,7 @@ class Tracker():
         pose_cam2obj_scaled = self.scale_pose(pose_cam2obj)
 
         # use ngp model to render the image
-        rays_o, rays_d = get_rays(self.directions[0], torch.from_numpy(pose_cam2obj_scaled).cuda())
+        rays_o, rays_d = get_rays(self.directions[0], torch.from_numpy(pose_cam2obj_scaled).to(self.device))
         results_render = render(self.ngp_model, rays_o, rays_d,
                                 **{'test_time': True,
                                    'T_threshold': 1e-2,

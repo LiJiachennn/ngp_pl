@@ -33,23 +33,21 @@ class TrackerMLP(Tracker):
         directions = self.directions[level]
 
         # to cuda
-        img_tensor = torch.from_numpy(img).cuda()
-        depth_tensor = torch.from_numpy(np.float32(depth)).cuda()
+        img_tensor = torch.from_numpy(img).to(self.device)
+        depth_tensor = torch.from_numpy(np.float32(depth)).to(self.device)
 
         # cur pose
         pose_obj2cam = self.get_pose_obj2cam()
         pose_cam2obj = np.linalg.inv(pose_obj2cam)
         pose_cam2obj_scaled = self.scale_pose(pose_cam2obj)
 
-        # to se3
-        pose_cam2obj_se3 = self.ln(pose_cam2obj_scaled)
-        pose_cam2obj_se3 = torch.from_numpy(np.float32(pose_cam2obj_se3)).cuda()
-        pose_para_list_so3 = Variable(pose_cam2obj_se3[:3], requires_grad=True)
-        pose_para_list_T = Variable(pose_cam2obj_se3[3:], requires_grad=True)
+        # to quaternion and T
+        camera_tensor = self.get_tensor_from_camera(pose_cam2obj_scaled)
+        camera_tensor = Variable(camera_tensor.to(self.device), requires_grad=True)
+        cam_para_list = [camera_tensor]
 
         # set optimizer
-        optimizer_camera = torch.optim.Adam([{'params': pose_para_list_so3, 'lr': self.cam_lr * 0.2},
-                                             {'params': pose_para_list_T, 'lr': self.cam_lr}])
+        optimizer_camera = torch.optim.Adam(cam_para_list, lr=self.cam_lr)
 
         # set loss
         mse_loss = torch.nn.MSELoss()
@@ -59,28 +57,26 @@ class TrackerMLP(Tracker):
             optimizer_camera.zero_grad()
 
             # convert cam paras of optimizer to RT of NGP
-            pose_cur = self.get_pose_from_tensor(pose_para_list_so3, pose_para_list_T)
+            pose_cur = self.get_camera_from_tensor(camera_tensor).to(self.device)
 
             # use ngp model to render the image
-            rays_o, rays_d = get_rays(directions, torch.from_numpy(pose_cur).cuda())
+            rays_o, rays_d = get_rays(directions, pose_cur)
             results_render = render(self.ngp_model, rays_o, rays_d,
                                     **{'test_time': True,
                                        'T_threshold': 1e-2,
                                        'exp_step_factor': 1 / 256})
 
-            rgb_render = results_render['rgb'].reshape(img_wh[1], img_wh[0], 3).cpu().numpy()
-            rgb_render = (rgb_render * 255).astype(np.uint8)
-            rgb_render = cv2.cvtColor(rgb_render, cv2.COLOR_RGB2BGR)
-            depth_render = results_render['depth'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
-            depth_render = self.scale_depth(depth_render)
-            opacity_render = results_render['opacity'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
-
-            # to cuda
-            img_render_tensor = torch.from_numpy(rgb_render).cuda()
-            depth_render_tensor = torch.from_numpy(np.float32(depth_render)).cuda()
+            rgb_render_tensor = results_render['rgb'].reshape(img_wh[1], img_wh[0], 3)
+            depth_render_tensor = results_render['depth'].reshape(img_wh[1], img_wh[0])
+            # rgb_render = results_render['rgb'].reshape(img_wh[1], img_wh[0], 3).cpu().numpy()
+            # rgb_render = (rgb_render * 255).astype(np.uint8)
+            # rgb_render = cv2.cvtColor(rgb_render, cv2.COLOR_RGB2BGR)
+            # depth_render = results_render['depth'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
+            # depth_render = self.scale_depth(depth_render)
+            # opacity_render = results_render['opacity'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
 
             # loss
-            loss = mse_loss(torch.ones(5), torch.ones(5))
+            loss = mse_loss(depth_tensor, depth_render_tensor)
 
             # back prop
             loss.backward()
@@ -93,10 +89,64 @@ class TrackerMLP(Tracker):
             print(cam_para_list_T)
             print(depth_tensor[290][330])
 
-    def get_pose_from_tensor(self, so3_, T_):
-        so3 = so3_.clone().detach().cpu().numpy()
-        T = T_.clone().detach().cpu().numpy()
+    def quad2rotation(self, quad):
+        """
+        Convert quaternion to rotation. Since all operation in pytorch, support gradient passing.
 
-        xi = np.concatenate((so3, T))
-        pose = self.exp(xi)
-        return np.float32(pose)
+        Args:
+            quad (tensor, batch_size*4): quaternion.
+
+        Returns:
+            rot_mat (tensor, batch_size*3*3): rotation.
+        """
+        bs = quad.shape[0]
+        qr, qi, qj, qk = quad[:, 0], quad[:, 1], quad[:, 2], quad[:, 3]
+        two_s = 2.0 / (quad * quad).sum(-1)
+        rot_mat = torch.zeros(bs, 3, 3).to(quad.get_device())
+        rot_mat[:, 0, 0] = 1 - two_s * (qj ** 2 + qk ** 2)
+        rot_mat[:, 0, 1] = two_s * (qi * qj - qk * qr)
+        rot_mat[:, 0, 2] = two_s * (qi * qk + qj * qr)
+        rot_mat[:, 1, 0] = two_s * (qi * qj + qk * qr)
+        rot_mat[:, 1, 1] = 1 - two_s * (qi ** 2 + qk ** 2)
+        rot_mat[:, 1, 2] = two_s * (qj * qk - qi * qr)
+        rot_mat[:, 2, 0] = two_s * (qi * qk - qj * qr)
+        rot_mat[:, 2, 1] = two_s * (qj * qk + qi * qr)
+        rot_mat[:, 2, 2] = 1 - two_s * (qi ** 2 + qj ** 2)
+        return rot_mat
+
+    def get_camera_from_tensor(self, inputs):
+        """
+        Convert quaternion and translation to transformation matrix.
+        """
+        N = len(inputs.shape)
+        if N == 1:
+            inputs = inputs.unsqueeze(0)
+        quad, T = inputs[:, :4], inputs[:, 4:]
+        R = self.quad2rotation(quad)
+        RT = torch.cat([R, T[:, :, None]], 2)
+        if N == 1:
+            RT = RT[0]
+        return RT
+
+    def get_tensor_from_camera(self, RT, Tquad=False):
+        """
+        Convert transformation matrix to quaternion and translation.
+        """
+        gpu_id = -1
+        if type(RT) == torch.Tensor:
+            if RT.get_device() != -1:
+                RT = RT.detach().cpu()
+                gpu_id = RT.get_device()
+            RT = RT.numpy()
+        from mathutils import Matrix
+        R, T = RT[:3, :3], RT[:3, 3]
+        rot = Matrix(R)
+        quad = rot.to_quaternion()
+        if Tquad:
+            tensor = np.concatenate([T, quad], 0)
+        else:
+            tensor = np.concatenate([quad, T], 0)
+        tensor = torch.from_numpy(tensor).float()
+        if gpu_id != -1:
+            tensor = tensor.to(gpu_id)
+        return tensor
