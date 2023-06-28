@@ -10,12 +10,15 @@ import tracker_utils
 from models.rendering import render
 from datasets.ray_utils import get_rays
 
+import os
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
 class TrackerMLP(Tracker):
     def __init__(self, dataset):
         super().__init__(dataset)
 
         # set some globle paras
-        self.steps = 1
+        self.steps = 10
         self.sample_points = 1000
         self.cam_lr = 0.001
 
@@ -35,6 +38,10 @@ class TrackerMLP(Tracker):
         # to cuda
         img_tensor = torch.from_numpy(img).to(self.device)
         depth_tensor = torch.from_numpy(np.float32(depth)).to(self.device)
+
+        # flatten
+        img_tensor = img_tensor.view(-1, 3)
+        depth_tensor = depth_tensor.view(-1)
 
         # cur pose
         pose_obj2cam = self.get_pose_obj2cam()
@@ -61,33 +68,64 @@ class TrackerMLP(Tracker):
 
             # use ngp model to render the image
             rays_o, rays_d = get_rays(directions, pose_cur)
-            results_render = render(self.ngp_model, rays_o, rays_d,
-                                    **{'test_time': True,
-                                       'T_threshold': 1e-2,
-                                       'exp_step_factor': 1 / 256})
 
-            rgb_render_tensor = results_render['rgb'].reshape(img_wh[1], img_wh[0], 3)
-            depth_render_tensor = results_render['depth'].reshape(img_wh[1], img_wh[0])
-            # rgb_render = results_render['rgb'].reshape(img_wh[1], img_wh[0], 3).cpu().numpy()
-            # rgb_render = (rgb_render * 255).astype(np.uint8)
-            # rgb_render = cv2.cvtColor(rgb_render, cv2.COLOR_RGB2BGR)
-            # depth_render = results_render['depth'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
-            # depth_render = self.scale_depth(depth_render)
-            # opacity_render = results_render['opacity'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
+            # select rays, need further accelerate
+            random_indices = self.select_rays(pose_cur)
+            results_render = render(self.ngp_model, rays_o[random_indices], rays_d[random_indices],
+                                    **{'test_time': False})
+
+            rgb_render_tensor = results_render['rgb']
+            depth_render_tensor = results_render['depth']
+
+            # conver depth render to real value
+            # THIS LINE HAS SOME BUG.
+            # depth_render_tensor = depth_render_tensor * 2 * self.scale * 1000
 
             # loss
-            loss = mse_loss(depth_tensor, depth_render_tensor)
+            loss = mse_loss(depth_tensor[random_indices], depth_render_tensor)
 
             # back prop
             loss.backward()
             optimizer_camera.step()
             optimizer_camera.zero_grad()
 
-            print("step: ", i)
-            print(pose_cam2obj_se3)
-            print(cam_para_list_so3)
-            print(cam_para_list_T)
-            print(depth_tensor[290][330])
+            # print("step: ", i)
+            # print(camera_tensor)
+
+
+    def select_rays(self, pose_cur):
+        # use ngp model to render the image, for select rays
+        rays_o, rays_d = get_rays(self.directions[0], pose_cur)
+        results_render = render(self.ngp_model, rays_o, rays_d,
+                                **{'test_time': True,
+                                   'T_threshold': 1e-2,
+                                   'exp_step_factor': 1 / 256})
+
+        # find the valid point
+        opacity_render = results_render['opacity'].reshape(self.img_wh[0][1], self.img_wh[0][0]).cpu().numpy()
+        valid_indices = np.where(opacity_render > 0.95)
+        valid_indices = np.array(valid_indices).transpose()
+
+        # flatten the indices
+        flatten_indices = np.zeros(valid_indices.shape[0])
+        flatten_indices = valid_indices[:, 0]*self.img_wh[0][0] + valid_indices[:, 1]
+
+        # select part rays
+        if (flatten_indices.shape[0] > self.sample_points):
+            random_indices = np.array(np.random.choice(flatten_indices, size=self.sample_points, replace=False))
+        else:
+            random_indices = flatten_indices
+
+        # visulize the result
+        # tracking_result = self.imgPyramid[0].copy()
+        # for i in range(random_indices.shape[0]):
+        #     r = int(random_indices[i] / self.img_wh[0][0])
+        #     c = int(random_indices[i] % self.img_wh[0][0])
+        #     tracking_result[r][c] = 0.5 * np.array([255, 0, 255]) + 0.5 * self.imgPyramid[0][r][c]
+        # cv2.imshow("tracking_result", tracking_result)
+        # cv2.waitKey(0)
+
+        return random_indices
 
     def quad2rotation(self, quad):
         """

@@ -49,7 +49,7 @@ def track_one_video(root_path, NGP_model_path, variant, object):
         tracker.set_depth(depth)
 
         # set gt pose, for testing
-        # tracker.set_pose_obj2cam(poses_gt[i])
+        tracker.set_pose_obj2cam(poses_gt[i])
 
         # estimate the pose
         tracker.esitmate_pose()
