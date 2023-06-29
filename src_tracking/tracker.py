@@ -78,13 +78,22 @@ class Tracker():
     def set_ngp_model(self, model):
         self.ngp_model = model
 
-    def scale_pose(self, pose):
+    def down_scale_pose(self, pose):
         scaled_pose = pose.copy()
-        scaled_pose[:, 3] /= 2 * self.scale
+        scaled_pose[:3, 3] /= (2 * self.scale)
         return scaled_pose
 
-    def scale_depth(self, depth):
-        depth *= 2 * self.scale
+    def up_scale_pose(self, pose):
+        scaled_pose = pose.copy()
+        scaled_pose[:3, 3] *= (2 * self.scale)
+        return scaled_pose
+
+    def down_scale_depth(self, depth):
+        depth /= (2 * self.scale)
+        return depth
+
+    def up_scale_depth(self, depth):
+        depth *= (2 * self.scale)
         return depth
 
     def visulize_tracking_result(self):
@@ -93,7 +102,7 @@ class Tracker():
         # cur pose
         pose_obj2cam = self.get_pose_obj2cam()
         pose_cam2obj = np.linalg.inv(pose_obj2cam)
-        pose_cam2obj_scaled = self.scale_pose(pose_cam2obj)
+        pose_cam2obj_scaled = self.down_scale_pose(pose_cam2obj)[:3, :]
 
         # use ngp model to render the image
         rays_o, rays_d = get_rays(self.directions[0], torch.from_numpy(pose_cam2obj_scaled).to(self.device))

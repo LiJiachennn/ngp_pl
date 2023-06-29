@@ -32,7 +32,7 @@ class TrackerDirect(Tracker):
         # cur pose
         pose_obj2cam = self.get_pose_obj2cam()
         pose_cam2obj = np.linalg.inv(pose_obj2cam)
-        pose_cam2obj_scaled = self.scale_pose(pose_cam2obj)
+        pose_cam2obj_scaled = self.down_scale_pose(pose_cam2obj)[:3, :]
 
         # use ngp model to render the image
         rays_o, rays_d = get_rays(directions, torch.from_numpy(pose_cam2obj_scaled).to(self.device))
@@ -45,7 +45,7 @@ class TrackerDirect(Tracker):
         rgb_render = (rgb_render * 255).astype(np.uint8)
         rgb_render = cv2.cvtColor(rgb_render, cv2.COLOR_RGB2BGR)
         depth_render = results_render['depth'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
-        depth_render = self.scale_depth(depth_render)
+        depth_render = self.up_scale_depth(depth_render)
         opacity_render = results_render['opacity'].reshape(img_wh[1], img_wh[0]).cpu().numpy()
 
         # optimize the pose

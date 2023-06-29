@@ -19,7 +19,7 @@ class TrackerMLP(Tracker):
 
         # set some globle paras
         self.steps = 10
-        self.sample_points = 1000
+        self.sample_points = 500
         self.cam_lr = 0.001
 
     def esitmate_pose(self):
@@ -46,18 +46,15 @@ class TrackerMLP(Tracker):
         # cur pose
         pose_obj2cam = self.get_pose_obj2cam()
         pose_cam2obj = np.linalg.inv(pose_obj2cam)
-        pose_cam2obj_scaled = self.scale_pose(pose_cam2obj)
+        pose_cam2obj_scaled = self.down_scale_pose(pose_cam2obj)
 
         # to quaternion and T
-        camera_tensor = self.get_tensor_from_camera(pose_cam2obj_scaled)
+        camera_tensor = self.get_tensor_from_camera(pose_cam2obj_scaled[:3, :])
         camera_tensor = Variable(camera_tensor.to(self.device), requires_grad=True)
         cam_para_list = [camera_tensor]
 
         # set optimizer
         optimizer_camera = torch.optim.Adam(cam_para_list, lr=self.cam_lr)
-
-        # set loss
-        mse_loss = torch.nn.MSELoss()
 
         for i in range(self.steps):
 
@@ -78,11 +75,14 @@ class TrackerMLP(Tracker):
             depth_render_tensor = results_render['depth']
 
             # conver depth render to real value
-            # THIS LINE HAS SOME BUG.
-            # depth_render_tensor = depth_render_tensor * 2 * self.scale * 1000
+            depth_render_tensor = torch.mul(depth_render_tensor, 2 * self.scale * 1000)
 
             # loss
-            loss = mse_loss(depth_tensor[random_indices], depth_render_tensor)
+            # remove the invalid region
+            # diff = abs(depth_tensor[random_indices] - depth_render_tensor)
+            # depth_loss_mask = diff < 100
+
+            loss = torch.mean(torch.abs(depth_tensor[random_indices] - depth_render_tensor))
 
             # back prop
             loss.backward()
@@ -90,7 +90,18 @@ class TrackerMLP(Tracker):
             optimizer_camera.zero_grad()
 
             # print("step: ", i)
+            # print(loss)
             # print(camera_tensor)
+
+        # update the pose to tracker
+        pose_opt = self.get_camera_from_tensor(camera_tensor).detach().cpu().numpy()
+        pose_opt = self.up_scale_pose(pose_opt)
+        pose_opt = np.vstack((pose_opt, np.array([0, 0, 0, 1])))
+        pose_opt = np.linalg.inv(pose_opt)
+        self.set_pose_obj2cam(np.float32(pose_opt))
+
+        # check result
+        # print(loss)
 
 
     def select_rays(self, pose_cur):
