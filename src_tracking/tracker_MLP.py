@@ -19,8 +19,10 @@ class TrackerMLP(Tracker):
 
         # set some globle paras
         self.steps = 10
-        self.sample_points = 500
+        self.sample_points = 1000
         self.cam_lr = 0.001
+
+        self.seperate_LR = False
 
     def esitmate_pose(self):
         self.run_level(0)
@@ -50,13 +52,27 @@ class TrackerMLP(Tracker):
 
         # to quaternion and T
         camera_tensor = self.get_tensor_from_camera(pose_cam2obj_scaled[:3, :])
-        camera_tensor = Variable(camera_tensor.to(self.device), requires_grad=True)
-        cam_para_list = [camera_tensor]
 
         # set optimizer
-        optimizer_camera = torch.optim.Adam(cam_para_list, lr=self.cam_lr)
+        if self.seperate_LR:
+            camera_tensor = camera_tensor.to(self.device).detach()
+            quad = camera_tensor[:4]
+            T = camera_tensor[-3:]
+            quad = Variable(quad, requires_grad=True)
+            T = Variable(T, requires_grad=True)
+            cam_para_list_quad = [quad]
+            cam_para_list_T = [T]
+            optimizer_camera = torch.optim.Adam([{'params': cam_para_list_quad, 'lr': self.cam_lr * 5},
+                                                 {'params': cam_para_list_T, 'lr': self.cam_lr}])
+        else:
+            camera_tensor = Variable(camera_tensor.to(self.device), requires_grad=True)
+            cam_para_list = [camera_tensor]
+            optimizer_camera = torch.optim.Adam(cam_para_list, lr=self.cam_lr)
 
         for i in range(self.steps):
+
+            if self.seperate_LR:
+                camera_tensor = torch.cat([quad, T], 0).to(self.device)
 
             optimizer_camera.zero_grad()
 
