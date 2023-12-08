@@ -50,6 +50,29 @@ def track_one_video(root_path, NGP_model_path, variant, object):
 
         # set gt pose, for testing
         # tracker.set_pose_obj2cam(poses_gt[i])
+        gt_pose = poses_gt[i]
+        delta_euler = np.array([2, 2, 0])
+        delta_t = np.array([0, 0, 0])
+        delta_pose = tracker_utils.eulerT2RT(delta_euler, delta_t)
+        tracker.set_pose_obj2cam(np.float32(delta_pose @ gt_pose))
+
+        # check the delta pose
+        # if (i > 0) :
+        #     pose_prev = poses_gt[i-1]
+        #     pose_cur = poses_gt[i]
+        #     pose_delta = pose_cur @ np.linalg.inv(pose_prev)
+        #
+        #     delta_rot, delta_trans = tracker_utils.compute_error_pose(pose_delta, np.eye(4))
+        #     delta_eulerT = tracker_utils.RT2eulerT(pose_delta)
+        #
+        #     delta_T_independent = pose_cur[:3, 3] - pose_prev[:3, 3]
+        #     delta_trans_independent = np.linalg.norm(delta_T_independent, ord=2)
+        #
+        #     print(delta_rot, delta_trans, delta_trans_independent,
+        #           delta_eulerT[0], delta_eulerT[1], delta_eulerT[2],
+        #           delta_eulerT[3], delta_eulerT[4], delta_eulerT[5],
+        #           delta_T_independent[0], delta_T_independent[1], delta_T_independent[2])
+
 
         # estimate the pose
         tracker.esitmate_pose()
@@ -68,7 +91,7 @@ def track_one_video(root_path, NGP_model_path, variant, object):
 
         cv2.imshow("result", result_tracking)
         cv2.imshow("img", img)
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(0)
         if key == 27:
             break
 

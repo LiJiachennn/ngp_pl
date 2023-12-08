@@ -18,7 +18,7 @@ class TrackerMLP(Tracker):
         super().__init__(dataset)
 
         # set some globle paras
-        self.steps = 10
+        self.steps = 50
         self.sample_points = 1000
         self.cam_lr = 0.001
 
@@ -84,6 +84,12 @@ class TrackerMLP(Tracker):
 
             # select rays, need further accelerate
             random_indices = self.select_rays(pose_cur)
+
+            # break
+            if (random_indices.shape[0] < self.sample_points/5):
+                continue
+
+            # render rays
             results_render = render(self.ngp_model, rays_o[random_indices], rays_d[random_indices],
                                     **{'test_time': False})
 

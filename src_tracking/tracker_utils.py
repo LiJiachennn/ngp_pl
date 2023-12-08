@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import cv2
+from scipy.spatial.transform import Rotation
 
 def compute_error_rotation(R_pred, R_gt):
     trace = np.trace(np.dot(R_pred.T, R_gt))
@@ -47,3 +48,26 @@ def depth2pseudo(depth_, depth_min):
     depth = depth_normalize(depth, depth_min)
     depth = cv2.applyColorMap(depth, cv2.COLORMAP_TURBO)
     return depth
+
+def eulerT2RT(euler_angles, t):
+    R = euler2R(euler_angles)
+    RT = np.eye(4)
+    RT[:3, :3] = R
+    RT[:3, 3] = t
+    return RT
+
+def RT2eulerT(RT):
+    euler = R2euler(RT[:3, :3])
+    t = RT[:3, 3]
+    eulerT = np.concatenate((euler, t))
+    return eulerT
+
+def euler2R(euler_angles):
+    r = Rotation.from_euler('xyz', euler_angles, degrees=True)
+    R = r.as_matrix()
+    return R
+
+def R2euler(R):
+    r = Rotation.from_matrix(R)
+    euler_angles = r.as_euler('xyz', degrees=True)
+    return euler_angles
